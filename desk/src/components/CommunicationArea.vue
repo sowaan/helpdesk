@@ -1,9 +1,9 @@
 <template>
-  <div class="flex flex-col comm-area">
+  <div class="comm-area">
     <div
-      class="flex justify-between gap-3 border-t px-4 lg:px-10 py-4 md:py-2.5"
+      class="flex justify-between gap-3 border-t px-6 md:px-10 py-4 md:py-2.5"
     >
-      <div class="flex gap-1.5">
+      <div class="flex gap-1.5 items-center">
         <Button
           ref="sendEmailRef"
           variant="ghost"
@@ -25,39 +25,23 @@
             <CommentIcon class="h-4" />
           </template>
         </Button>
+        <TypingIndicator :ticketId="ticketId" />
       </div>
-    </div>
-    <div v-show="showCommentBox">
-      <CommentTextEditor
-        v-model="doc"
-        v-model:attachments="attachments"
-        :editable="showCommentBox"
-        :doctype="doctype"
-        placeholder="Add a comment..."
-        @submit="
-          () => {
-            showCommentBox = false;
-            emit('update');
-          }
-        "
-        @discard="
-          () => {
-            showCommentBox = false;
-          }
-        "
-      />
     </div>
     <div
       v-show="showEmailBox"
-      class="flex gap-1.5"
+      class="flex gap-1.5 flex-1"
       @keydown.ctrl.enter.capture.stop="submitEmail"
       @keydown.meta.enter.capture.stop="submitEmail"
     >
       <EmailEditor
         ref="emailEditorRef"
-        v-model="doc"
+        :label="
+          isMobileView ? 'Send' : isMac ? 'Send (⌘ + ⏎)' : 'Send (Ctrl + ⏎)'
+        "
         v-model:content="content"
-        v-model:attachments="attachments"
+        placeholder="Hi John, we are looking into this issue."
+        :ticketId="ticketId"
         :to-emails="toEmails"
         :cc-emails="ccEmails"
         :bcc-emails="bccEmails"
@@ -74,22 +58,56 @@
         "
       />
     </div>
+    <div
+      v-show="showCommentBox"
+      @keydown.ctrl.enter.capture.stop="submitComment"
+      @keydown.meta.enter.capture.stop="submitComment"
+    >
+      <CommentTextEditor
+        ref="commentTextEditorRef"
+        :label="
+          isMobileView
+            ? 'Comment'
+            : isMac
+            ? 'Comment (⌘ + ⏎)'
+            : 'Comment (Ctrl + ⏎)'
+        "
+        :ticketId="ticketId"
+        :editable="showCommentBox"
+        :doctype="doctype"
+        placeholder="@John could you please look into this?"
+        @submit="
+          () => {
+            showCommentBox = false;
+            emit('update');
+          }
+        "
+        @discard="
+          () => {
+            showCommentBox = false;
+          }
+        "
+      />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { CommentTextEditor, EmailEditor, TypingIndicator } from "@/components";
+import { CommentIcon, EmailIcon } from "@/components/icons/";
+import { useDevice } from "@/composables";
+import { useScreenSize } from "@/composables/screen";
+import { showCommentBox, showEmailBox } from "@/pages/ticket/modalStates";
+import { ref, watch } from "vue";
 
-import { EmailEditor, CommentTextEditor } from "@/components";
-import { EmailIcon, CommentIcon } from "@/components/icons/";
-
-const content = defineModel("content");
-const showEmailBox = ref(false);
-const showCommentBox = ref(false);
-const doc = defineModel();
-const attachments = ref([]);
 const emit = defineEmits(["update"]);
+const content = defineModel("content");
+const { isMac } = useDevice();
+const { isMobileView } = useScreenSize();
+let doc = defineModel();
+// let doc = inject(TicketSymbol)?.value.doc
 const emailEditorRef = ref(null);
+const commentTextEditorRef = ref(null);
 
 function toggleEmailBox() {
   if (showCommentBox.value) {
@@ -105,13 +123,33 @@ function toggleCommentBox() {
   showCommentBox.value = !showCommentBox.value;
 }
 
+function submitEmail() {
+  if (emailEditorRef.value.submitMail()) {
+    emit("update");
+  }
+}
+
+function submitComment() {
+  if (commentTextEditorRef.value.submitComment()) {
+    emit("update");
+  }
+}
+
+function splitIfString(str: string | string[]) {
+  if (typeof str === "string") {
+    return str.split(",");
+  }
+  return str;
+}
+
 function replyToEmail(data: object) {
   showEmailBox.value = true;
+
   emailEditorRef.value.addToReply(
     data.content,
-    data.to?.split(","),
-    data.cc?.split(","),
-    data.bcc?.split(",")
+    splitIfString(data.to),
+    splitIfString(data.cc),
+    splitIfString(data.bcc)
   );
 }
 
@@ -119,6 +157,10 @@ const props = defineProps({
   doctype: {
     type: String,
     default: "HD Ticket",
+  },
+  ticketId: {
+    type: String,
+    default: null,
   },
   toEmails: {
     type: Array,
@@ -133,6 +175,24 @@ const props = defineProps({
     default: () => [],
   },
 });
+
+watch(
+  () => showEmailBox.value,
+  (value) => {
+    if (value) {
+      emailEditorRef.value?.editor?.commands?.focus();
+    }
+  }
+);
+
+watch(
+  () => showCommentBox.value,
+  (value) => {
+    if (value) {
+      commentTextEditorRef.value?.editor?.commands?.focus();
+    }
+  }
+);
 
 defineExpose({
   replyToEmail,

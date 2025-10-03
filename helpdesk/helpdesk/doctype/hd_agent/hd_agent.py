@@ -17,60 +17,22 @@ class HDAgent(Document):
         user = frappe.get_doc("User", self.user)
         for role in ["Agent"]:
             user.append("roles", {"role": role})
-        user.save()
-
-    @staticmethod
-    def default_list_data():
-        columns = [
-            {
-                "label": "Agent Name",
-                "key": "agent_name",
-                "width": "17rem",
-                "type": "Data",
-            },
-            {
-                "label": "Email",
-                "key": "email",
-                "width": "24rem",
-                "type": "Data",
-            },
-            {
-                "label": "Created On",
-                "key": "creation",
-                "width": "8rem",
-                "type": "Datetime",
-            },
-        ]
-        rows = [
-            "name",
-            "is_active",
-            "user.full_name",
-            "user.user_image",
-            "user.email",
-            "user.username",
-            "modified",
-            "creation",
-        ]
-        return {"columns": columns, "rows": rows}
+        user.save(ignore_permissions=True)
 
 
 @frappe.whitelist()
-def create_hd_agent(first_name, last_name, email, signature, team):
-    if frappe.db.exists("User", email):
-        user = frappe.get_doc("User", email)
-    else:
-        user = frappe.get_doc(
-            {
-                "doctype": "User",
-                "first_name": first_name,
-                "last_name": last_name,
-                "email": email,
-                "email_signature": signature,
-            }
-        ).insert()
+def update_agent_role(user, new_role):
+    """
+    Update the role of the user to Agent
+    """
 
-        user.send_welcome_mail_to_user()
+    user_doc = frappe.get_doc("User", user)
 
-    return frappe.get_doc(
-        {"doctype": "HD Agent", "user": user.name, "group": team}
-    ).insert()
+    if new_role == "Manager":
+        user_doc.append_roles("Agent Manager", "System Manager")
+    if new_role == "Agent":
+        user_doc.append_roles("Agent")
+        if "Agent Manager" in frappe.get_roles(user_doc.name):
+            user_doc.remove_roles("Agent Manager", "System Manager")
+
+    user_doc.save()

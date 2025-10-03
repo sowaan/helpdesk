@@ -1,9 +1,21 @@
+import { getCachedListResource, getCachedResource } from "frappe-ui";
 import { io } from "socket.io-client";
-import { getCachedResource, getCachedListResource } from "frappe-ui";
 import { socketio_port } from "../../../../sites/common_site_config.json";
 
-function init() {
-  const url = getUrl();
+// extend window object
+declare global {
+  interface Window {
+    site_name: string;
+  }
+}
+
+export function initSocket() {
+  let host = window.location.hostname;
+  let siteName = window.site_name || host;
+  let port = window.location.port ? `:${socketio_port}` : "";
+  let protocol = port ? "http" : "https";
+  let url = `${protocol}://${host}${port}/${siteName}`;
+
   const socket = io(url, {
     withCredentials: true,
     reconnectionAttempts: 5,
@@ -23,17 +35,4 @@ function init() {
   return socket;
 }
 
-function getUrl() {
-  const host = window.location.hostname;
-  const port = window.location.port ? `:${socketio_port}` : "";
-  const protocol = port ? "http" : "https";
-  const fVersion = window["frappe_version"];
-  if (fVersion && fVersion.startsWith("14")) {
-    return `${protocol}://${host}${port}`;
-  }
-  const siteName = window["site_name"];
-  const namespace = !siteName?.startsWith("{{") ? siteName : host;
-  return `${protocol}://${host}${port}/${namespace}`;
-}
-
-export const socket = init();
+export const socket = initSocket();

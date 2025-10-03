@@ -49,15 +49,8 @@ export async function init(ps: PosthogSettings) {
     api_host: ps.posthog_host,
     autocapture: false,
     person_profiles: "identified_only",
-    capture_pageview: true,
-    capture_pageleave: true,
-    disable_session_recording: false,
-    session_recording: {
-      maskAllInputs: false,
-      maskInputOptions: {
-        password: true,
-      },
-    },
+    disable_session_recording: true,
+    advanced_disable_decide: true,
     loaded: (ph: typeof posthog) => {
       window.posthog = ph;
       ph.identify(SITENAME);
@@ -67,7 +60,7 @@ export async function init(ps: PosthogSettings) {
 
 interface CaptureOptions {
   data: {
-    user: string;
+    user?: string;
     [key: string]: string | number | boolean | object;
   };
 }
@@ -76,7 +69,7 @@ export function capture(
   event: string,
   options: CaptureOptions = { data: { user: "" } }
 ) {
-  if (!telemetry.value.enabled) return;
+  if (!isTelemetryEnabled()) return;
   window.posthog.capture(`${APP}_${event}`, options);
 }
 

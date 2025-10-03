@@ -6,6 +6,7 @@ app_icon = "octicon octicon-file-directory"
 app_color = "grey"
 app_email = "hello@frappe.io"
 app_license = "AGPLv3"
+required_apps = ["telephony"]
 
 add_to_apps_screen = [
     {
@@ -17,7 +18,6 @@ add_to_apps_screen = [
     }
 ]
 
-before_install = "helpdesk.setup.install.before_install"
 after_install = "helpdesk.setup.install.after_install"
 after_migrate = [
     "helpdesk.search.build_index_in_background",
@@ -25,8 +25,13 @@ after_migrate = [
 ]
 
 scheduler_events = {
-    "all": ["helpdesk.search.build_index_if_not_exists"],
-    "hourly": ["helpdesk.search.download_corpus"],
+    "all": [
+        "helpdesk.search.build_index_if_not_exists",
+        "helpdesk.search.download_corpus",
+    ],
+    "daily": [
+        "helpdesk.helpdesk.doctype.hd_ticket.hd_ticket.close_tickets_after_n_days"
+    ],
 }
 
 
@@ -37,9 +42,17 @@ website_route_rules = [
     },
 ]
 
+user_invitation = {
+    "allowed_roles": {
+        "Agent Manager": ["Agent", "Agent Manager"],
+        "System Manager": ["Agent", "Agent Manager", "System Manager"],
+    },
+    "after_accept": "helpdesk.helpdesk.hooks.user_invitation.after_accept",
+}
+
 doc_events = {
     "Contact": {
-        "before_insert": "helpdesk.helpdesk.hooks.contact.before_insert",
+        "before_insert": "helpdesk.overrides.contact.before_insert",
     },
     "Assignment Rule": {
         "on_trash": "helpdesk.extends.assignment_rule.on_assignment_rule_trash",
@@ -58,7 +71,7 @@ permission_query_conditions = {
 # ---------------
 # Override standard doctype classes
 override_doctype_class = {
-    "Contact": "helpdesk.overrides.contact.CustomContact",
+    "Email Account": "helpdesk.overrides.email_account.CustomEmailAccount",
 }
 
 ignore_links_on_delete = [
@@ -72,6 +85,7 @@ ignore_links_on_delete = [
 setup_wizard_complete = "helpdesk.setup.setup_wizard.setup_complete"
 
 
-website_route_rules = [
-    {"from_route": "/helpdesk/<path:app_path>", "to_route": "helpdesk"},
-]
+# Testing
+# ---------------
+
+before_tests = "helpdesk.test_utils.before_tests"

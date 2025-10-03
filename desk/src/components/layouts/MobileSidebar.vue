@@ -16,8 +16,8 @@
           <!-- user dropwdown -->
           <div><UserMenu class="p-2 mb-2" :options="profileSettings" /></div>
           <!-- notifications -->
-          <div class="overflow-y-auto px-2">
-            <div class="mb-3 flex flex-col">
+          <div class="overflow-y-auto px-2" v-if="!isCustomerPortal">
+            <div class="mb-3 flex flex-col gap-1">
               <SidebarLink
                 class="relative"
                 label="Notifications"
@@ -35,18 +35,57 @@
                   />
                 </template>
               </SidebarLink>
+              <SidebarLink
+                v-if="!isCustomerPortal"
+                class="relative"
+                label="Dashboard"
+                :icon="LucideLayoutDashboard"
+                :to="'Dashboard'"
+                :is-active="isActiveTab('Dashboard')"
+                :is-expanded="true"
+              />
             </div>
           </div>
 
-          <div class="mb-4 flex flex-col gap-1 px-2">
-            <SidebarLink
-              v-for="option in menuOptions"
-              v-bind="option"
-              :key="option.label"
-              :is-expanded="true"
-              :is-active="isActiveTab(option.to)"
-              :on-click="() => (sidebarOpened = false)"
+          <div v-for="view in allViews" :key="view.label">
+            <div
+              v-if="!view.hideLabel && view.views?.length"
+              class="mx-2 my-2 h-1"
             />
+            <Section
+              :label="view.label"
+              :hideLabel="view.hideLabel"
+              :opened="view.opened"
+            >
+              <template #header="{ opened, hide, toggle }">
+                <div
+                  v-if="!hide"
+                  class="flex cursor-pointer gap-1.5 px-1 text-base font-medium text-ink-gray-5 transition-all duration-300 ease-in-out"
+                  :class="'ml-2 mt-4 h-7 w-auto opacity-100'"
+                  @click="toggle()"
+                >
+                  <FeatherIcon
+                    name="chevron-right"
+                    class="h-4 text-ink-gray-9 transition-all duration-300 ease-in-out"
+                    :class="{ 'rotate-90': opened }"
+                  />
+                  <span>{{ view.label }}</span>
+                </div>
+              </template>
+              <nav class="flex flex-col ml-2 mr-1">
+                <SidebarLink
+                  v-for="link in view.views"
+                  :icon="link.icon"
+                  :label="link.label"
+                  :to="link.to"
+                  :key="link.label"
+                  :is-expanded="true"
+                  :is-active="isActiveTab(link.to)"
+                  class="my-0.5"
+                  :onClick="link.onClick"
+                />
+              </nav>
+            </Section>
           </div>
         </div>
       </TransitionChild>
@@ -66,43 +105,97 @@
 </template>
 
 <script setup lang="ts">
-import { computed, markRaw } from "vue";
 import {
-  TransitionRoot,
-  TransitionChild,
   Dialog,
   DialogOverlay,
+  TransitionChild,
+  TransitionRoot,
 } from "@headlessui/vue";
-import { useRouter, useRoute } from "vue-router";
+import { computed, markRaw, onMounted } from "vue";
+import { useRoute, useRouter } from "vue-router";
 
-import UserMenu from "@/components/UserMenu.vue";
+import { Section } from "@/components";
 import SidebarLink from "@/components/SidebarLink.vue";
+import UserMenu from "@/components/UserMenu.vue";
 import { useNotificationStore } from "@/stores/notification";
 
 import { mobileSidebarOpened as sidebarOpened } from "@/composables/mobile";
-import LucideBell from "~icons/lucide/bell";
+import { currentView, useView } from "@/composables/useView";
 
-import { CUSTOMER_PORTAL_LANDING, CUSTOMER_PORTAL_ROUTES } from "@/router";
+import LucideBell from "~icons/lucide/bell";
+import LucideLayoutDashboard from "~icons/lucide/layout-dashboard";
+
+import { useAuthStore } from "@/stores/auth";
+import { isCustomerPortal } from "@/utils";
 import Apps from "../Apps.vue";
 import {
   agentPortalSidebarOptions,
   customerPortalSidebarOptions,
 } from "./layoutSettings";
-import { useAuthStore } from "@/stores/auth";
+import { useTelephonyStore } from "@/stores/telephony";
+import { storeToRefs } from "pinia";
+const { pinnedViews, publicViews } = useView();
 
 const notificationStore = useNotificationStore();
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
-const isCustomerPortal = computed(() =>
-  CUSTOMER_PORTAL_ROUTES.includes(route.name)
-);
+const telephonyStore = useTelephonyStore();
+const { isCallingEnabled } = storeToRefs(telephonyStore);
 
-const menuOptions = computed(() => {
-  return isCustomerPortal.value
+const allViews = computed(() => {
+  let items = isCustomerPortal.value
     ? customerPortalSidebarOptions
     : agentPortalSidebarOptions;
+
+  if (!isCallingEnabled.value) {
+    items = items.filter((item) => item.label !== "Call Logs");
+  }
+
+  const options = [
+    {
+      label: "All Views",
+      hideLabel: true,
+      opened: true,
+      views: items,
+    },
+  ];
+  if (publicViews.value?.length && !isCustomerPortal.value) {
+    options.push({
+      label: "Public Views",
+      opened: true,
+      hideLabel: false,
+      views: parseViews(publicViews.value),
+    });
+  }
+  if (pinnedViews.value?.length) {
+    options.push({
+      label: "Private Views",
+      opened: true,
+      hideLabel: false,
+      views: parseViews(pinnedViews.value),
+    });
+  }
+  return options;
 });
+function parseViews(views) {
+  return views.map((view) => {
+    return {
+      label: view.label,
+      icon: view.icon,
+      to: {
+        name: view.route_name,
+        query: { view: view.name },
+      },
+      onClick: () => {
+        currentView.value = {
+          label: view.label,
+          icon: view.icon,
+        };
+      },
+    };
+  });
+}
 
 const customerPortalDropdown = computed(() => [
   {
@@ -120,7 +213,7 @@ const agentPortalDropdown = computed(() => [
     label: "Customer portal",
     icon: "users",
     onClick: () => {
-      const path = router.resolve({ name: CUSTOMER_PORTAL_LANDING });
+      const path = router.resolve({ name: "TicketsCustomer" });
       window.open(path.href);
     },
   },
@@ -148,6 +241,9 @@ const profileSettings = computed(() => {
 });
 
 function isActiveTab(to: string) {
+  if (route.query.view) {
+    return route.query.view == to?.query?.view;
+  }
   return route.name === to;
 }
 </script>

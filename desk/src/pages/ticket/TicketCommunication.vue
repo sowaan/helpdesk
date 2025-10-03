@@ -1,5 +1,7 @@
 <template>
-  <div class="border rounded flex-1 px-3 pt-2.5 shadow bg-white">
+  <div
+    class="border rounded flex-1 px-3 pt-2.5 bg-white mb-4 border-transparent bg-white rounded-md shadow text-base leading-6 transition-all duration-300 ease-in-out"
+  >
     <div class="mb-4 flex items-center justify-between text-base">
       <div class="flex items-center gap-0.5">
         <UserAvatar v-bind="user" size="lg" expand strong :hide-avatar="true" />
@@ -11,8 +13,8 @@
         </Tooltip>
       </div>
     </div>
-    <!-- eslint-disable-next-line vue/no-v-html -->
-    <div class="prose-f" v-html="sanitize(content)"></div>
+
+    <EmailContent :content="sanitize(content)" />
     <div class="flex flex-wrap gap-2 mb-2">
       <AttachmentItem
         v-for="a in attachments"
@@ -25,12 +27,12 @@
 </template>
 
 <script setup lang="ts">
-import { Tooltip } from "frappe-ui";
-import sanitizeHtml from "sanitize-html";
-import { Icon } from "@iconify/vue";
+import { AttachmentItem, UserAvatar } from "@/components";
 import { dayjs } from "@/dayjs";
 import { UserInfo } from "@/types";
-import { AttachmentItem, UserAvatar } from "@/components";
+import { Icon } from "@iconify/vue";
+import { Tooltip } from "frappe-ui";
+import sanitizeHtml from "sanitize-html";
 
 interface Attachment {
   file_name: string;

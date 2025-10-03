@@ -34,6 +34,9 @@ class HDTeam(Document):
         rule = self.get_assignment_rule()
         rule_doc = frappe.get_doc("Assignment Rule", rule)
         rule_doc.assign_condition = f"status == 'Open' and agent_group == '{newdn}'"
+        rule_doc.assign_condition_json = (
+            '[["status", "==", "Open"], "and", ["agent_group", "==", newdn]]]'
+        )
         rule_doc.save(ignore_permissions=True)
 
     def on_update(self):
@@ -68,6 +71,9 @@ class HDTeam(Document):
         )
         rule_doc.document_type = "HD Ticket"
         rule_doc.assign_condition = f"status == 'Open' and agent_group == '{self.name}'"
+        rule_doc.assign_condition_json = (
+            '[["status","==","Open"],"and",["agent_group","==","Product Experts"]]'
+        )
         rule_doc.priority = 1
         rule_doc.disabled = True  # Disable the rule by default, when agents are added to the group, the rule will be enabled
 
@@ -163,33 +169,11 @@ class HDTeam(Document):
                 assignment_rule_doc.disabled = True
                 assignment_rule_doc.save()
 
-    @staticmethod
-    def default_list_data():
-        columns = [
-            {
-                "label": "Name",
-                "key": "name",
-                "width": "17rem",
-                "type": "Data",
-            },
-            {
-                "label": "Assignment rule",
-                "key": "assignment_rule",
-                "width": "24rem",
-                "type": "Data",
-            },
-            {
-                "label": "Created On",
-                "key": "creation",
-                "width": "8rem",
-                "type": "Datetime",
-            },
-        ]
-        rows = [
-            "name",
-            "assignment_rule",
-            "ignore_restrictions",
-            "modified",
-            "creation",
-        ]
-        return {"columns": columns, "rows": rows}
+
+@frappe.whitelist()
+def get_team_members(team: str):
+    """
+    Returns the team members for the given team name
+    """
+    members = frappe.get_all("HD Team Member", filters={"parent": team}, pluck="user")
+    return members

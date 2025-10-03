@@ -25,54 +25,58 @@
 </template>
 
 <script setup lang="ts">
-import { Badge, Tooltip } from "frappe-ui";
 import { dayjs } from "@/dayjs";
-import { formatTime } from "@/utils";
-import { dateFormat, dateTooltipFormat } from "@/utils";
-import { computed } from "vue";
+import {
+  dateFormat,
+  dateTooltipFormat,
+  formatTime,
+  getTimeInSeconds,
+} from "@/utils";
+import { Badge, Tooltip } from "frappe-ui";
+import { computed, onUnmounted, ref, watch } from "vue";
 
 const props = defineProps({
-  agreementStatus: {
-    type: String,
-    required: true,
-  },
-  ticketCreatedOn: {
-    type: String,
-    required: true,
-  },
-  firstRespondedOn: {
-    type: String,
-    required: true,
-  },
-  responseBy: {
-    type: String,
-    required: true,
-  },
-  resolutionDate: {
-    type: String,
-    required: true,
-  },
-  resolutionBy: {
-    type: String,
-    required: true,
-  },
-  source: {
-    type: String,
+  ticket: {
+    type: Object,
     required: true,
   },
 });
 
+let firstResponseInterval = null;
+let resolutionInterval = null;
+
+const firstResponseSeconds = ref(0);
+const resolutionSeconds = ref(0);
+
 const firstResponseBadge = computed(() => {
   let firstResponse = null;
-  if (!props.firstRespondedOn && dayjs().isBefore(dayjs(props.responseBy))) {
+  if (
+    !props.ticket.first_responded_on &&
+    dayjs().isBefore(dayjs(props.ticket.response_by))
+  ) {
+    let responseBy = formatTime(
+      dayjs(props.ticket.response_by).diff(dayjs(), "s")
+    );
+    if (firstResponseInterval) {
+      clearInterval(firstResponseInterval);
+      firstResponseInterval = null;
+    }
+    handleFirstResponseInterval(responseBy);
     firstResponse = {
-      label: `Due in ${formatTime(dayjs(props.responseBy).diff(dayjs(), "s"))}`,
+      label: `Due in ${formatTime(firstResponseSeconds.value)}`,
       color: "orange",
     };
-  } else if (dayjs(props.firstRespondedOn).isBefore(dayjs(props.responseBy))) {
+  } else if (
+    dayjs(props.ticket.first_responded_on).isBefore(
+      dayjs(props.ticket.response_by)
+    )
+  ) {
     firstResponse = {
       label: `Fulfilled in ${formatTime(
-        dayjs(props.firstRespondedOn).diff(dayjs(props.ticketCreatedOn), "s")
+        dayjs(props.ticket.first_responded_on).diff(
+          dayjs(props.ticket.creation),
+          "s"
+        )
       )}`,
       color: "green",
     };
@@ -87,17 +91,36 @@ const firstResponseBadge = computed(() => {
 
 const resolutionBadge = computed(() => {
   let resolution = null;
-  if (!props.resolutionDate && dayjs().isBefore(props.resolutionBy)) {
+  if (resolutionInterval) {
+    clearInterval(resolutionInterval);
+  }
+  if (
+    props.ticket.status_category === "Paused" &&
+    props.ticket.on_hold_since &&
+    dayjs(props.ticket.resolution_by).isAfter(dayjs(props.ticket.on_hold_since))
+  ) {
+    let timeLeft = dayjs(props.ticket.resolution_by).diff(dayjs(), "s");
     resolution = {
-      label: `Due in ${formatTime(
-        dayjs(props.resolutionBy).diff(dayjs(), "s")
-      )}`,
+      label: `${formatTime(timeLeft)} left (On Hold)`,
+      color: "blue",
+    };
+  } else if (
+    !props.ticket.resolution_date &&
+    dayjs().isBefore(props.ticket.resolution_by)
+  ) {
+    let resolutionBy = formatTime(
+      dayjs(props.ticket.resolution_by).diff(dayjs(), "s")
+    );
+    handleResolutionInterval(resolutionBy);
+
+    resolution = {
+      label: `Due in ${formatTime(resolutionSeconds.value)}`,
       color: "orange",
     };
-  } else if (dayjs(props.resolutionDate).isBefore(props.resolutionBy)) {
+  } else if (props.ticket.agreement_status === "Fulfilled") {
     resolution = {
       label: `Fulfilled in ${formatTime(
-        dayjs(props.resolutionDate).diff(dayjs(props.ticketCreatedOn), "s")
+        dayjs(props.ticket.resolution_time, "s")
       )}`,
       color: "green",
     };
@@ -110,20 +133,27 @@ const resolutionBadge = computed(() => {
   return resolution;
 });
 
+function getCalculatedResolution() {
+  let resolution = dayjs(props.ticket.resolution_by).add(
+    props.ticket.total_hold_time,
+    "s"
+  );
+  // let now = new Date()
+  resolution = dayjs(resolution).diff(dayjs(), "s");
+  return formatTime(resolution);
+}
+
 const sections = computed(() => [
   {
     label: "First Response",
-    tooltipValue: dateFormat(
-      props.firstRespondedOn || props.responseBy,
-      dateTooltipFormat
-    ),
+    tooltipValue: dateFormat(props.ticket.response_by, dateTooltipFormat),
     badgeText: firstResponseBadge.value.label,
     badgeColor: firstResponseBadge.value.color,
   },
   {
     label: "Resolution",
     tooltipValue: dateFormat(
-      props.resolutionDate || props.resolutionBy,
+      props.ticket.resolution_date || props.ticket.resolution_by,
       dateTooltipFormat
     ),
     badgeText: resolutionBadge.value.label,
@@ -131,7 +161,67 @@ const sections = computed(() => [
   },
   {
     label: "Source",
-    value: props.source,
+    value: props.ticket.via_customer_portal ? "Portal" : "Mail",
   },
 ]);
+
+// Watch for status changes and clear intervals
+watch(
+  () => props.ticket,
+  (ticket: any) => {
+    if (ticket.status_category !== "Open") {
+      if (firstResponseInterval) {
+        clearInterval(firstResponseInterval);
+        firstResponseInterval = null;
+      }
+      if (resolutionInterval) {
+        clearInterval(resolutionInterval);
+        resolutionInterval = null;
+      }
+    }
+  },
+  { deep: true, immediate: true }
+);
+
+function handleFirstResponseInterval(time: string) {
+  if (!time) return;
+  if (props.ticket.status_category !== "Open") {
+    return;
+  }
+  firstResponseSeconds.value = getTimeInSeconds(time);
+  firstResponseInterval = setInterval(() => {
+    if (firstResponseSeconds.value <= 0) {
+      clearInterval(firstResponseInterval);
+      return;
+    }
+    firstResponseSeconds.value--;
+  }, 1000);
+}
+
+function handleResolutionInterval(time: string) {
+  if (!time) return;
+  if (props.ticket.status_category !== "Open") {
+    return;
+  }
+
+  resolutionSeconds.value = getTimeInSeconds(time);
+  resolutionInterval = setInterval(() => {
+    if (resolutionSeconds.value <= 0) {
+      clearInterval(resolutionInterval);
+      return;
+    }
+    resolutionSeconds.value--;
+  }, 1000);
+}
+
+onUnmounted(() => {
+  if (firstResponseInterval) {
+    clearInterval(firstResponseInterval);
+  }
+  if (resolutionInterval) {
+    clearInterval(resolutionInterval);
+  }
+  firstResponseInterval = null;
+  resolutionInterval = null;
+});
 </script>

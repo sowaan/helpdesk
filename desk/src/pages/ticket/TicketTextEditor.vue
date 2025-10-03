@@ -13,15 +13,19 @@
           v-for="a in attachments"
           :key="a.file_url"
           :label="a.file_name"
+          :url="!['MOV', 'MP4'].includes(a.file_type) ? a.file_url : null"
         >
           <template #suffix>
             <Icon
               icon="lucide:x"
               @click.stop="
-                $emit(
-                  'update:attachments',
-                  attachments.filter((b) => b.file_url !== a.file_url)
-                )
+                () => {
+                  $emit(
+                    'update:attachments',
+                    attachments.filter((b) => b.file_url !== a.file_url)
+                  );
+                  removeAttachmentFromServer(a.name);
+                }
               "
             />
           </template>
@@ -37,14 +41,7 @@
             private: true,
           }"
           @success="(f: File) => $emit('update:attachments', [...attachments, f])"
-          @failure="
-            () =>
-              createToast({
-                title: 'Error Uploading File',
-                icon: 'x',
-                iconClasses: 'text-red-600',
-              })
-          "
+          @failure="() => toast.error('Error uploading file')"
         >
           <template #default="{ openFileSelector }">
             <Button theme="gray" variant="ghost" @click="openFileSelector()">
@@ -83,17 +80,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { FileUploader } from "frappe-ui";
-import { Icon } from "@iconify/vue";
-import { useAuthStore } from "@/stores/auth";
 import {
   AttachmentItem,
   TextEditor as HTextEditor,
   UserAvatar,
 } from "@/components";
+import { useAuthStore } from "@/stores/auth";
 import { File } from "@/types";
-import { createToast } from "@/utils";
+import { removeAttachmentFromServer } from "@/utils";
+import { Icon } from "@iconify/vue";
+import { FileUploader, toast } from "frappe-ui";
+import { computed, ref } from "vue";
 
 interface P {
   content: string;
